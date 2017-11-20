@@ -3,7 +3,6 @@
 require "resources/config.php";
 header('Content-Type: application/json');
 header("Access-Control-Allow-Origin: *");
-$raw = json_decode(file_get_contents('php://input'));
 if(isset($_POST['method']) && !empty($_POST['method'])){
   $method = $_POST['method'];
   switch($method){
@@ -25,14 +24,17 @@ if(isset($_POST['method']) && !empty($_POST['method'])){
     case 'updateVaccineChart':
       echo updateVaccineChart();
       break;
-    case 'addStudent':
-      echo addStudent();
+    case 'addVaccine':
+      echo addVaccine();
       break;
-    case 'updateStudent':
-      echo updateStudent();
+    case 'updateVaccine':
+      echo updateVaccine();
       break;
-    case 'getSections':
-      echo getSections();
+    case 'getVaccineList':
+      echo getVaccineList();
+      break;
+    case 'getConsumptionByDate':
+      echo getConsumptionByDate();
       break;
     default :
       echo json_encode(array(
@@ -42,20 +44,6 @@ if(isset($_POST['method']) && !empty($_POST['method'])){
       ));
       break;
   }
-}else if($raw){
-    if($raw->method == 'takeAttendance'){
-       echo takeAttendance($raw);
-    }else{
-    echo json_encode(array(
-      'status'  => false,
-      'data'    => array(),
-      'message' => 'Invalid method'
-      ));
-    }	
-  }
+}
   
-  
-  
-
-
 ?>

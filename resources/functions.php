@@ -502,12 +502,64 @@ function updateVaccineChart(){
         $query_status = confirm($query);
         if($query_status['status']){
           if(rows($query)){
+            autocommit(false);
             $query = query("UPDATE child_vaccine set given_on = '{$given_on}', due_date = '{$due_date}', flag = 1 WHERE child_id = {$child_id} AND vaccine_id = {$vaccine_id}");
             $query_status = confirm($query);
             if($query_status['status']){
               if(affectedRows()){
-                $status = true;
-                $message = "Vaccine chart updated successfully.";
+                $query = query("UPDATE vaccines set stock = stock - 1 where id = {$vaccine_id}");
+                $query_status = confirm($query);
+                if($query_status['status']){
+                  if(affectedRows()){
+                    $query = query("SELECT id from inventory where vaccine_id = {$vaccine_id} AND `date` = '{$given_on}'");
+                    $query_status = confirm($query);
+                    if($query_status['status']){
+                      if(rows($query)){
+                        $id = fetch_array($query)['id'];
+                        $query = query("UPDATE inventory set count = count + 1 where id = {$id}");
+                        $query_status = confirm($query);
+                        if($query_status['status']){
+                          if(affectedRows()){
+                            $status = true;
+                            $message = "Vaccine chart updated successfully.";
+                            commit();
+                          }else{
+                            rollback();
+                            $message = 'Something went wrong.';
+                          }
+                        }else{
+                          rollback();
+                          $message = $query_status['message'];
+                        }
+                      }else{
+                        $query = query("INSERT into inventory(vaccine_id, count, `date`) VALUES({$vaccine_id}, 1, '{$given_on}')");
+                        $query_status = confirm($query);
+                        if($query_status['status']){
+                          if(affectedRows()){
+                            $status = true;
+                            $message = "Vaccine chart updated successfully.";
+                            commit();
+                          }else{
+                            rollback();
+                            $message = 'Something went wrong.';
+                          }
+                        }else{
+                          rollback();
+                          $message = $query_status['message'];
+                        }
+                      }
+                    }else{
+                      rollback();
+                      $message = $query_status['message'];
+                    }
+                  }else{
+                    rollback();
+                    $message = 'Vaccine not found.';
+                  }
+                }else{
+                  rollback();
+                  $message = $query_status['message'];
+                }
               }else{
                 $message = 'Either vaccine or child not found.';
               }
@@ -529,6 +581,7 @@ function updateVaccineChart(){
   }else{
     $message = 'Insufficient parameters!';
   }
+  autocommit(true);
   if(count($data)){
     return json_encode(array(
       'status'  => $status,
@@ -543,28 +596,89 @@ function updateVaccineChart(){
   }
 }
 
-function addVaccines(){
+
+/************************Inventory methods**************************************/
+
+function addVaccine(){
   $status = false;
   $message = '';
   $data = array();
-  if(isset($_POST['child_id']) && isset($_POST['vaccine_id']) && isset($_POST['token']) && isset($_POST['reg_id']) && isset($_POST['given_on']) && isset($_POST['due_date'])) {
+  if(isset($_POST['name']) && isset($_POST['token']) && isset($_POST['reg_id']) && isset($_POST['stock']) && isset($_POST['duration'])) {
     $token = escape_string($_POST['token']);
-    $vaccine_id = escape_string($_POST['vaccine_id']); 
+    $name = escape_string($_POST['name']); 
     $reg_id = escape_string($_POST['reg_id']);
-    $child_id = escape_string($_POST['child_id']);
-    $given_on = escape_string($_POST['given_on']);
-    $due_date = escape_string($_POST['due_date']);    
-    if(!empty($token) && !empty($vaccine_id) && !empty($child_id) && !empty($reg_id) && !empty($given_on) && !empty($due_date)){
+    $duration = escape_string($_POST['duration']);
+    $stock = escape_string($_POST['stock']);
+    if(!empty($token) && !empty($name) && !empty($stock) && !empty($reg_id) && !empty($duration)){
       $res = checkToken($reg_id, $token);
       if($res['status']){
-        $query = query("UPDATE child_vaccine set given_on = '{$given_on}', due_date = '{$due_date}' WHERE child_id = {$child_id} AND vaccine_id = {$vaccine_id}");
+        $query = query("SELECT id from vaccines where name = '{$name}' AND duration = {$duration}");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query) == 0){
+            $query = query("INSERT into vaccines(name, duration, stock) VALUES('{$name}', {$duration}, {$stock})");
+            $query_status = confirm($query);
+            if($query_status['status']){
+              if(affectedRows()){
+                $status = true;
+                $message = "Vaccine inserted successfully.";
+              }else{
+                $message = 'Something went wrong, Try again.';
+              }
+            }else{
+              $message = $query_status['message'];
+            }
+          }else{
+            $message = 'Vaccine already present.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  if(count($data)){
+    return json_encode(array(
+      'status'  => $status,
+      'data'    => $data,
+      'message' => $message
+    ));
+  }else{
+    return json_encode(array(
+      'status'  => $status,
+      'message' => $message
+    ));
+  }
+}
+
+function updateVaccine(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['reg_id']) && isset($_POST['token']) && isset($_POST['name']) && isset($_POST['vaccine_id']) && isset($_POST['duration']) && isset($_POST['stock'])) {
+    $token = escape_string($_POST['token']);
+    $reg_id = escape_string($_POST['reg_id']);
+    $name = escape_string($_POST['name']);
+    $vaccine_id = escape_string($_POST['vaccine_id']);
+    $duration = escape_string($_POST['duration']);
+    $stock = escape_string($_POST['stock']);
+    if(!empty($reg_id) && !empty($token) && !empty($name) && !empty($vaccine_id) && !empty($duration) && !empty($stock)){
+      $res = checkToken($reg_id, $token);
+      if($res['status']){
+        $query = query("UPDATE vaccines set name = '{$name}', duration = {$duration}, stock = {$stock} where id = {$vaccine_id}");
         $query_status = confirm($query);
         if($query_status['status']){
           if(affectedRows()){
             $status = true;
-            $message = "Vaccine chart updated successfully.";
+            $message = "Vaccine updated successfully.";
           }else{
-            $message = 'Either vaccine or child not found.';
+            $message = 'Either vaccine not found or nothing to update.';
           }
         }else{
           $message = $query_status['message'];
@@ -592,89 +706,37 @@ function addVaccines(){
   }
 }
 
-function addStudent(){
+
+function getVaccineList(){
   $status = false;
   $message = '';
   $data = array();
-  if(isset($_POST['t_id']) && isset($_POST['token']) && isset($_POST['enroll_no']) && isset($_POST['section_id']) && isset($_POST['name']) && isset($_POST['mac_id'])) {
+  if(isset($_POST['reg_id']) && isset($_POST['token'])) {
     $token = escape_string($_POST['token']);
-    $t_id = escape_string($_POST['t_id']);
-    $name = escape_string($_POST['name']);
-    $section_id = escape_string($_POST['section_id']);
-    $mac_id = escape_string($_POST['mac_id']);
-    $enroll_no = escape_string($_POST['enroll_no']);
-    if(!empty($t_id) && !empty($token) && !empty($name) && !empty($mac_id) && !empty($enroll_no) && !empty($section_id)){
-      $res = checkToken($t_id, $token);
+    $reg_id = escape_string($_POST['reg_id']);
+    if(!empty($reg_id) && !empty($token)){
+      $res = checkToken($reg_id, $token);
       if($res['status']){
-      $query = query("SELECT section_id from sections where section_id = {$section_id}");
-        $query_status = confirm($query);
-        if($query_status['status']){
-          if(rows($query)){
-            $query = query("INSERT INTO students(enroll_no, name, mac_id, section_id) VALUES('{$enroll_no}', '{$name}', '{$mac_id}', {$section_id})");
-            $query_status = confirm($query);
-            if($query_status['status']){
-              if(affectedRows()){
-                $status = true;
-                $message = 'Student details are added.';
-              }else{
-                $message = 'Something went wrong, Please try again.';
-              }
-            }else{
-              $message = $query_status['message'];
-            }
-          }else{
-            $message = 'Section not found.';
-          }
-        }else{
-          $message = $query_status['message'];
-        }
-      }else{
-        $message = $res['message'];
-      }
-    }else{
-      $message = 'All fields are mandatory';
-    }
-  }else{
-    $message = 'Insufficient parameters!';
-  }
-  return json_encode(array(
-    'status'  => $status,
-    'data'    => $data,
-    'message' => $message
-  ));
-}
-
-
-function getSections(){
-  $status = false;
-  $message = '';
-  $data = array();
-  if(isset($_POST['t_id']) && isset($_POST['token'])) {
-    $token = escape_string($_POST['token']);
-    $t_id = escape_string($_POST['t_id']);
-    if(!empty($t_id) && !empty($token)){
-      $res = checkToken($t_id, $token);
-      if($res['status']){
-        $query = query("SELECT sec.name, sec.year, sec.section_id, b.branch_name from sections as sec inner join branches as b where sec.b_id = b.b_id");
+        $query = query("SELECT * from vaccines");
         $query_status = confirm($query);
         if($query_status['status']){
           if(rows($query)){
             $status = true;
-            $message = "Total ".rows($query)." section/s found.";
+            $message = "Total ".rows($query)." vaccine/s found.";
             while($row = fetch_array($query)){
               $name = $row['name'];
-              $branch_name = $row['branch_name'];
-              $year = $row['year'];
-              $section_id = $row['section_id'];
+              $duration = $row['duration'];
+              $stock = $row['stock'];
+              $id = $row['id'];
               array_push($data, array(
-                'section_name' => $name,
-                'branch_name' => $branch_name,
-                'year' => $year,
-                'section_id' => $section_id
+                'name' => $name,
+                'duration' => $duration,
+                'stock' => $stock,
+                'id' => $id
               ));
             }
           }else{
-            $message = 'No sections are found.';
+            $message = 'No vaccines are found.';
           }
         }else{
           $message = $query_status['message'];
@@ -688,45 +750,51 @@ function getSections(){
   }else{
     $message = 'Insufficient parameters!';
   }
-  return json_encode(array(
-    'status'  => $status,
-    'data'    => $data,
-    'message' => $message
-  ));
+  if(count($data)){
+    return json_encode(array(
+      'status'  => $status,
+      'data'    => $data,
+      'message' => $message
+    ));
+  }else{
+    return json_encode(array(
+      'status'  => $status,
+      'message' => $message
+    ));
+  }
 }
 
-function updateStudent(){
+function getConsumptionByDate(){
   $status = false;
   $message = '';
   $data = array();
-  if(isset($_POST['t_id']) && isset($_POST['token']) && isset($_POST['enroll_no']) && isset($_POST['section_id']) && isset($_POST['name']) && isset($_POST['mac_id'])) {
+  if(isset($_POST['reg_id']) && isset($_POST['token']) && isset($_POST['date'])) {
     $token = escape_string($_POST['token']);
-    $t_id = escape_string($_POST['t_id']);
-    $name = escape_string($_POST['name']);
-    $section_id = escape_string($_POST['section_id']);
-    $mac_id = strtoupper(escape_string($_POST['mac_id']));
-    $enroll_no = escape_string($_POST['enroll_no']);
-    if(!empty($t_id) && !empty($token) && !empty($name) && !empty($mac_id) && !empty($enroll_no) && !empty($section_id)){
-      $res = checkToken($t_id, $token);
+    $reg_id = escape_string($_POST['reg_id']);
+    $date = escape_string($_POST['date']);
+    if(!empty($reg_id) && !empty($token) && !empty($date)){
+      $res = checkToken($reg_id, $token);
       if($res['status']){
-      $query = query("SELECT section_id from sections where section_id = {$section_id}");
+        $query = query("SELECT i.vaccine_id, i.count, i.date, v.name FROM `inventory` as i inner join vaccines as v on i.vaccine_id = v.id AND i.date = '{$date}'");
         $query_status = confirm($query);
         if($query_status['status']){
           if(rows($query)){
-          $query = query("UPDATE students SET name = '{$name}', mac_id = '{$mac_id}' WHERE enroll_no = '{$enroll_no}'");
-            $query_status = confirm($query);
-            if($query_status['status']){
-              if(affectedRows()){
-                $status = true;
-                $message = 'Student details are updated.';
-              }else{
-                $message = 'Either student not found or details are same.';
-              }
-            }else{
-              $message = $query_status['message'];
+            $status = true;
+            $message = "Total ".rows($query)." record/s found.";
+            while($row = fetch_array($query)){
+              $vaccine_id = $row['vaccine_id'];
+              $count = $row['count'];
+              $date = $row['date'];
+              $name = $row['name'];
+              array_push($data, array(
+                'name' => $name,
+                'count' => $count,
+                'date' => $date,
+                'vaccine_id' => $vaccine_id
+              ));
             }
           }else{
-            $message = 'Section not found.';
+            $message = 'No record found.';
           }
         }else{
           $message = $query_status['message'];
@@ -740,11 +808,18 @@ function updateStudent(){
   }else{
     $message = 'Insufficient parameters!';
   }
-  return json_encode(array(
-    'status'  => $status,
-    'data'    => $data,
-    'message' => $message
-  ));
+  if(count($data)){
+    return json_encode(array(
+      'status'  => $status,
+      'data'    => $data,
+      'message' => $message
+    ));
+  }else{
+    return json_encode(array(
+      'status'  => $status,
+      'message' => $message
+    ));
+  }
 }
 
 ?>
