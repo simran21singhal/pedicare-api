@@ -1,0 +1,606 @@
+<?php
+
+function test(){
+  return "hello";
+}
+/********************************HELPER FUNCTIONS***********************************/
+
+function query($sql){
+  global $connection;
+  return mysqli_query($connection, $sql);
+}
+
+function autocommit($f){
+  global $connection;
+  mysqli_autocommit($connection,$f);
+}
+
+function commit(){
+  global $connection;
+  mysqli_commit($connection);
+}
+
+function rollback(){
+  global $connection;
+  mysqli_rollback($connection);
+}
+
+function rows($sql){
+  return mysqli_num_rows($sql);
+}
+
+function affectedRows(){
+  global $connection;
+  return mysqli_affected_rows($connection);
+}
+
+function confirm($result){
+  global $connection;
+  $data['message'] = 'Success.';
+  $data['status'] = true;
+  if(!$result){
+    $data['message'] = "QUERY FAILED: ".mysqli_error($connection);
+    $data['status'] = false;
+    return $data;
+  }else{
+    return $data;
+  }
+}
+
+function escape_string($string){
+  global $connection;
+  return mysqli_real_escape_string($connection, $string);
+}
+
+function fetch_array($result){
+  return mysqli_fetch_array($result);
+}
+
+function checkToken($t_id, $token) {
+  $status = false;
+  $message = '';
+  $data = array();
+  $query = query("SELECT token from token where t_id = {$t_id} order by timestamp desc limit 1");
+  $query_status = confirm($query);
+  if($query_status['status']){
+    if(rows($query)) {
+      $db_token = fetch_array($query)['token'];
+      if($token == $db_token) {
+        $message = 'Token found';
+        $status = true;
+      }else{
+        $message = 'Token expired. Please login again.';
+      }
+    }else{
+      $message = 'Token not found.';
+    }
+  }else{
+    $message = $query_status['message'];
+  }
+  return array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  );
+}
+
+
+/********************************* API FUNCTIONS ************************************/
+
+function teacherRegistration() {
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['name']) && isset($_POST['email']) && isset($_POST['password'])) {
+    $name = escape_string($_POST['name']);
+    $email = escape_string($_POST['email']);
+    $password = escape_string($_POST['password']);
+    if(!empty($name) && !empty($email) && !empty($password)){
+      $password = md5($password);
+      $query = query("SELECT email from teacher_registration where email = '{$email}'");
+      $query_status = confirm($query);
+      if($query_status['status']){
+        if(rows($query) == 0){
+          $query = query("INSERT INTO teacher_registration(name, email, password) VALUES('{$name}', '{$email}', '{$password}')");
+          $query_status = confirm($query);
+          if($query_status['status']){
+            $message = 'Account successfully created';
+            $status = true;
+          }else{
+            $message = $query_status['message'];
+          }
+        }else{
+          $message = 'Email is already registered!';
+        }
+      }else{
+        $message = $query_status['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+function teacherLogin() {
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['password']) && isset($_POST['email'])) {
+    $email = escape_string($_POST['email']);
+    $password = escape_string($_POST['password']);
+    if(!empty($email) && !empty($password)){
+      $password = md5($password);
+      $query = query("SELECT email from teacher_registration where email = '{$email}'");
+      $query_status = confirm($query);
+      if($query_status['status']){
+        if(rows($query)){
+        $query = query("SELECT t_id from teacher_registration where email = '{$email}' AND password = '{$password}'");
+          $query_status = confirm($query);
+          if($query_status['status']){
+            if(rows($query)){
+              $t_id = fetch_array($query)['t_id'];
+              $token = bin2hex(openssl_random_pseudo_bytes(16));
+              $query = query("INSERT INTO token(t_id, token) VALUES({$t_id}, '{$token}')");
+              $query_status = confirm($query);
+              if($query_status['status']){
+                $message = 'Login Successfull';
+                $status = true;
+                $data = array(
+                  'user_id' => $t_id,
+                  'token' => $token
+                );
+              }else{
+                $message = 'Something went wrong.';
+              }
+            }else{
+              $message = 'Wrong credentials.';
+            }            
+          }else{
+            $message = $query_status['message'];
+          }
+        }else{
+          $message = 'User not found.';
+        }
+      }else{
+        $message = $query_status['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+function addSubject() {
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['section_id']) && isset($_POST['sub_name']) && isset($_POST['t_id']) && isset($_POST['token'])) {
+    $section_id = escape_string($_POST['section_id']);
+    $sub_name = escape_string($_POST['sub_name']);
+    $token = escape_string($_POST['token']);
+    $t_id = escape_string($_POST['t_id']);
+    if(!empty($section_id) && !empty($sub_name) && !empty($t_id) && !empty($token)){
+      $res = checkToken($t_id, $token);
+      if($res['status']){
+        $query = query("SELECT sub_id FROM subjects WHERE sub_name = '{$sub_name}' AND t_id = $t_id AND section_id = '{$section_id}' ");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query) == 0){
+          $query = query("INSERT INTO subjects(sub_name, t_id, section_id) VALUES('{$sub_name}', $t_id, $section_id)");
+            $query_status = confirm($query);
+            if($query_status['status']){
+              $status = true;
+              $message = 'Subject added successfully';            
+            }else{
+              $message = $query_status['message'];
+            }
+          }else{
+            $message = 'Subject already present.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+function getSubjects(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['t_id']) && isset($_POST['token'])) {
+    $token = escape_string($_POST['token']);
+    $t_id = escape_string($_POST['t_id']);
+    if(!empty($t_id) && !empty($token)){
+      $res = checkToken($t_id, $token);
+      if($res['status']){
+        $query = query("select c.sub_name, c.name as section_name, b.branch_name, c.year, c.sub_id, c.section_id from ( 
+          select sub.sub_name, sub.section_id, sec.name, sec.year, sec.b_id, sub.sub_id from subjects as sub inner join sections as sec where sub.section_id = sec.section_id AND sub.t_id = {$t_id}
+          ) as c inner join branches as b where c.b_id = b.b_id");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+            $status = true;
+            $message = "Total ".rows($query)." subject/s found.";
+            while($row = fetch_array($query)){
+              $sub_name = $row['sub_name'];
+              $section_name = $row['section_name'];
+              $branch_name = $row['branch_name'];
+              $year = $row['year'];
+              $sub_id = $row['sub_id'];
+              $section_id = $row['section_id'];
+              array_push($data, array(
+                'sub_name' => $sub_name,
+                'section_name' => $section_name,
+                'branch_name' => $branch_name,
+                'year' => $year,
+                'sub_id' => $sub_id,
+                'section_id' => $section_id
+              ));
+            }
+          }else{
+            $message = 'No subjects are found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+function getSubAttendance() {
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['sub_id']) && isset($_POST['section_id']) && isset($_POST['token']) && isset($_POST['t_id'])) {
+    $token = escape_string($_POST['token']);
+    $sub_id = escape_string($_POST['sub_id']);
+    $section_id = escape_string($_POST['section_id']); 
+    $t_id = escape_string($_POST['t_id']);    
+    if(!empty($sub_id) && !empty($token) && !empty($section_id) && !empty($t_id)){
+      $res = checkToken($t_id, $token);
+      if($res['status']){
+      $query = query("SELECT b.name, b.enroll_no, count(a.mac_id) as total from attendance as a inner join students as b
+      where a.mac_id = b.mac_id AND a.section_id = {$section_id} AND a.sub_id = {$sub_id} AND count = 1
+      group by a.mac_id
+      ");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+            $status = true;
+            $message = "Total ".rows($query)." student/s found.";
+            while($row = fetch_array($query)){
+              $name = $row['name'];
+              $enroll_no = $row['enroll_no'];
+              $total = $row['total'];
+              array_push($data, array(
+                'name' => $name,
+                'enroll_no' => $enroll_no,
+                'total' => $total
+              ));
+            }
+          }else{
+            $message = 'No students found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+function getStudents(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['section_id']) && isset($_POST['token']) && isset($_POST['t_id'])) {
+    $token = escape_string($_POST['token']);
+    $section_id = escape_string($_POST['section_id']); 
+    $t_id = escape_string($_POST['t_id']);    
+    if(!empty($token) && !empty($section_id) && !empty($t_id)){
+      $res = checkToken($t_id, $token);
+      if($res['status']){
+      $query = query("SELECT name, enroll_no, mac_id, section_id from students where section_id = {$section_id}");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+            $status = true;
+            $message = "Total ".rows($query)." student/s found.";
+            while($row = fetch_array($query)){
+              $name = $row['name'];
+              $enroll_no = $row['enroll_no'];
+              $mac_id = $row['mac_id'];
+	      $section_id = $row['section_id'];	
+              array_push($data, array(
+                'name' => $name,
+                'enroll_no' => $enroll_no,
+                'mac_id' => $mac_id,
+		'section_id' => $section_id
+              ));
+            }
+          }else{
+            $message = 'No students found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+function takeAttendance($json_data){
+  $status = false;
+  $message = '';
+  $f = true;
+  $data = array();
+  $count = 0;
+  $token = escape_string($json_data->token);
+  $section_id = escape_string($json_data->section_id); 
+  $t_id = escape_string($json_data->t_id);
+  $sub_id = escape_string($json_data->sub_id);
+  $data_student_array = $json_data->data;
+  if(!empty($token) && !empty($section_id) && !empty($t_id) && !empty($sub_id)){
+    $res = checkToken($t_id, $token);
+    if($res['status']){
+      if(count($data_student_array) > 0){
+        autocommit(false);
+        $date = date('d/m/Y');
+        foreach( $data_student_array as $student ) {
+          $query = query("INSERT INTO attendance (`mac_id`, `count`, `section_id`, `sub_id`, `date`) VALUES('{$student->mac_id}', $student->flag, {$section_id}, {$sub_id}, '{$date}')");
+          $query_status = confirm($query);
+          if($query_status['status']){
+            if(affectedRows() == 0){
+              $f = false;
+              break;
+            }else{
+              ++$count;
+            }
+          }else{
+            $f = false;
+            break;
+          }
+        } //foreach end
+        if($f){
+          commit();
+          $status = true;
+          $message = $count.' attendance marked.';
+          // echo $_POST['data'];
+        }else{
+          rollback();
+          $message = 'There was some error. Try again';
+        }
+      }else{
+        $message = 'Student data not found.';
+      }
+    }else{
+      $message = $res['message'];
+    }
+  }else{
+    $message = 'Insufficient Data.';
+  }
+  autocommit(true);  
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));  
+}
+
+function addStudent(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['t_id']) && isset($_POST['token']) && isset($_POST['enroll_no']) && isset($_POST['section_id']) && isset($_POST['name']) && isset($_POST['mac_id'])) {
+    $token = escape_string($_POST['token']);
+    $t_id = escape_string($_POST['t_id']);
+    $name = escape_string($_POST['name']);
+    $section_id = escape_string($_POST['section_id']);
+    $mac_id = escape_string($_POST['mac_id']);
+    $enroll_no = escape_string($_POST['enroll_no']);
+    if(!empty($t_id) && !empty($token) && !empty($name) && !empty($mac_id) && !empty($enroll_no) && !empty($section_id)){
+      $res = checkToken($t_id, $token);
+      if($res['status']){
+      $query = query("SELECT section_id from sections where section_id = {$section_id}");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+            $query = query("INSERT INTO students(enroll_no, name, mac_id, section_id) VALUES('{$enroll_no}', '{$name}', '{$mac_id}', {$section_id})");
+            $query_status = confirm($query);
+            if($query_status['status']){
+              if(affectedRows()){
+                $status = true;
+                $message = 'Student details are added.';
+              }else{
+                $message = 'Something went wrong, Please try again.';
+              }
+            }else{
+              $message = $query_status['message'];
+            }
+          }else{
+            $message = 'Section not found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+
+function getSections(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['t_id']) && isset($_POST['token'])) {
+    $token = escape_string($_POST['token']);
+    $t_id = escape_string($_POST['t_id']);
+    if(!empty($t_id) && !empty($token)){
+      $res = checkToken($t_id, $token);
+      if($res['status']){
+        $query = query("SELECT sec.name, sec.year, sec.section_id, b.branch_name from sections as sec inner join branches as b where sec.b_id = b.b_id");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+            $status = true;
+            $message = "Total ".rows($query)." section/s found.";
+            while($row = fetch_array($query)){
+              $name = $row['name'];
+              $branch_name = $row['branch_name'];
+              $year = $row['year'];
+              $section_id = $row['section_id'];
+              array_push($data, array(
+                'section_name' => $name,
+                'branch_name' => $branch_name,
+                'year' => $year,
+                'section_id' => $section_id
+              ));
+            }
+          }else{
+            $message = 'No sections are found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+function updateStudent(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['t_id']) && isset($_POST['token']) && isset($_POST['enroll_no']) && isset($_POST['section_id']) && isset($_POST['name']) && isset($_POST['mac_id'])) {
+    $token = escape_string($_POST['token']);
+    $t_id = escape_string($_POST['t_id']);
+    $name = escape_string($_POST['name']);
+    $section_id = escape_string($_POST['section_id']);
+    $mac_id = strtoupper(escape_string($_POST['mac_id']));
+    $enroll_no = escape_string($_POST['enroll_no']);
+    if(!empty($t_id) && !empty($token) && !empty($name) && !empty($mac_id) && !empty($enroll_no) && !empty($section_id)){
+      $res = checkToken($t_id, $token);
+      if($res['status']){
+      $query = query("SELECT section_id from sections where section_id = {$section_id}");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+          $query = query("UPDATE students SET name = '{$name}', mac_id = '{$mac_id}' WHERE enroll_no = '{$enroll_no}'");
+            $query_status = confirm($query);
+            if($query_status['status']){
+              if(affectedRows()){
+                $status = true;
+                $message = 'Student details are updated.';
+              }else{
+                $message = 'Either student not found or details are same.';
+              }
+            }else{
+              $message = $query_status['message'];
+            }
+          }else{
+            $message = 'Section not found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  return json_encode(array(
+    'status'  => $status,
+    'data'    => $data,
+    'message' => $message
+  ));
+}
+
+?>

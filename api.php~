@@ -1,0 +1,58 @@
+<?php
+
+require "resources/config.php";
+header('Content-Type: application/json');
+header("Access-Control-Allow-Origin: *");
+$raw = json_decode(file_get_contents('php://input'));
+if(isset($_POST['method']) && !empty($_POST['method'])){
+  $method = $_POST['method'];
+  switch($method){
+    case 'teacherRegistration':
+      echo teacherRegistration();
+      break;
+    case 'teacherLogin':
+      echo teacherLogin();
+      break;
+    case 'addSubject':
+      echo addSubject();
+      break;
+    case 'getSubjects':
+      echo getSubjects();
+      break;
+    case 'getSubAttendance':
+      echo getSubAttendance();
+      break;
+    case 'getStudents':
+      echo getStudents();
+      break;
+    case 'addStudent':
+      echo addStudent();
+      break;
+    case 'updateStudent':
+      echo updateStudent();
+      break;
+    default :
+      echo json_encode(array(
+        'status'  => false,
+        'data'    => array(),
+        'message' => 'Invalid method'
+      ));
+      break;
+  }
+}else if($raw){
+    if($raw->method == 'takeAttendance'){
+       echo takeAttendance($raw);
+    }else{
+    echo json_encode(array(
+      'status'  => false,
+      'data'    => array(),
+      'message' => 'Invalid method'
+      ));
+    }	
+  }
+  
+  
+  
+
+
+?>
