@@ -596,6 +596,127 @@ function updateVaccineChart(){
   }
 }
 
+function getRecentChildVaccines(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['reg_id']) && isset($_POST['token'])) {
+    $token = escape_string($_POST['token']);
+    $reg_id = escape_string($_POST['reg_id']);
+    if(!empty($reg_id) && !empty($token)){
+      $res = checkToken($reg_id, $token);
+      if($res['status']){
+        $query = query("SELECT j.name as child_name, j.given_on, j.id as child_id, v.name as vaccine_name from vaccines as v inner join
+        (SELECT c.name, cv.given_on, cv.vaccine_id, c.id from child_vaccine as cv inner join child as c on cv.child_id = c.id AND c.parent_id = {$reg_id} AND cv.flag = 1) as j on j.vaccine_id = v.id  order  by j.given_on desc");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+            $status = true;
+            $message = "Total ".rows($query)." record/s found.";
+
+            while($row = fetch_array($query)){
+              $child_name = $row['child_name'];
+              $given_on = $row['given_on'];
+              $vaccine_name = $row['vaccine_name'];
+              $child_id = $row['child_id'];
+              array_push($data, array(
+                'child_name' => $child_name,
+                'given_on' => $given_on,
+                'vaccine_name' => $vaccine_name,
+                'child_id' => $child_id
+              ));
+            }
+
+          }else{
+            $message = 'No records found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  if(count($data)){
+    return json_encode(array(
+      'status'  => $status,
+      'data'    => $data,
+      'message' => $message
+    ));
+  }else{
+    return json_encode(array(
+      'status'  => $status,
+      'message' => $message
+    ));
+  }
+}
+
+function getUpcomingChildVaccineList(){
+  $status = false;
+  $message = '';
+  $data = array();
+  if(isset($_POST['reg_id']) && isset($_POST['token'])) {
+    $token = escape_string($_POST['token']);
+    $reg_id = escape_string($_POST['reg_id']);
+    if(!empty($reg_id) && !empty($token)){
+      $res = checkToken($reg_id, $token);
+      if($res['status']){
+        $query = query("SELECT * from (
+                                  SELECT j.name as child_name, j.given_on, j.due_date, j.id as child_id, v.name as vaccine_name from vaccines as v inner join
+                                  (SELECT c.name, cv.given_on, cv.due_date, cv.vaccine_id, c.id from child_vaccine as cv inner join child as c on cv.child_id = c.id AND c.parent_id = {$reg_id} AND cv.flag = 1
+                                  ) as j on j.vaccine_id = v.id order by j.given_on desc
+                                      ) as derived group by child_id");
+        $query_status = confirm($query);
+        if($query_status['status']){
+          if(rows($query)){
+            $status = true;
+            $message = "Total ".rows($query)." record/s found.";
+
+            while($row = fetch_array($query)){
+              $child_name = $row['child_name'];
+              $due_date = $row['due_date'];
+              $child_id = $row['child_id'];
+              array_push($data, array(
+                'child_name' => $child_name,
+                'due_date' => $due_date,
+                'child_id' => $child_id
+              ));
+            }
+
+          }else{
+            $message = 'No records found.';
+          }
+        }else{
+          $message = $query_status['message'];
+        }
+      }else{
+        $message = $res['message'];
+      }
+    }else{
+      $message = 'All fields are mandatory';
+    }
+  }else{
+    $message = 'Insufficient parameters!';
+  }
+  if(count($data)){
+    return json_encode(array(
+      'status'  => $status,
+      'data'    => $data,
+      'message' => $message
+    ));
+  }else{
+    return json_encode(array(
+      'status'  => $status,
+      'message' => $message
+    ));
+  }
+}
+
 
 /************************Inventory methods**************************************/
 

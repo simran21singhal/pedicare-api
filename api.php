@@ -36,6 +36,12 @@ if(isset($_POST['method']) && !empty($_POST['method'])){
     case 'getConsumptionByDate':
       echo getConsumptionByDate();
       break;
+    case 'getRecentChildVaccines':
+      echo getRecentChildVaccines();
+      break;
+    case 'getUpcomingChildVaccineList':
+      echo getUpcomingChildVaccineList();
+      break;
     default :
       echo json_encode(array(
         'status'  => false,
